@@ -1,0 +1,3 @@
+[submodule "vendor/composites"]
+	path = vendor/composites
+	url = https://github.com/tc39/proposal-composites.git

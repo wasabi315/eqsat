@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "dev": "deno run --watch main.ts",
+    "test": "deno test"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1",
+    "fast-check": "npm:fast-check@3"
+  },
+  "test": {
+    "exclude": ["vendor/"]
+  }
+}
