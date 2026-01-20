@@ -81,4 +81,52 @@ export class UnionFind {
   connected(x: Key, y: Key): boolean {
     return this.find(x) === this.find(y);
   }
+
+  /**
+   * Add a new element to the union-find structure.
+   * Returns the Key for the newly added element.
+   * The new element starts in its own singleton set.
+   */
+  extend(): Key {
+    const newKey = createKey(this.parent.length);
+    this.parent.push(newKey);
+    this.rank.push(0);
+    return newKey;
+  }
+
+  /**
+   * Get the current size (number of elements) in the union-find structure.
+   */
+  get size(): number {
+    return this.parent.length;
+  }
+
+  /**
+   * Get all disjoint sets as a Map from root to members.
+   * Each root maps to an array of all elements in that equivalence class.
+   *
+   * Example:
+   * ```ts
+   * const uf = new UnionFind(5);
+   * uf.union(createKey(0), createKey(2));
+   * uf.union(createKey(1), createKey(3));
+   * const sets = uf.getDisjointSets();
+   * // Map { 0 => [0, 2], 1 => [1, 3], 4 => [4] }
+   * ```
+   */
+  getDisjointSets(): Map<Key, Key[]> {
+    const classes = new Map<Key, Key[]>();
+
+    for (let i = 0; i < this.size; i++) {
+      const key = createKey(i);
+      const root = this.find(key);
+
+      if (!classes.has(root)) {
+        classes.set(root, []);
+      }
+      classes.get(root)!.push(key);
+    }
+
+    return classes;
+  }
 }

@@ -3,7 +3,8 @@
   "specifiers": {
     "jsr:@std/assert@1": "1.0.16",
     "jsr:@std/internal@^1.0.12": "1.0.12",
-    "npm:fast-check@3": "3.23.2"
+    "npm:fast-check@3": "3.23.2",
+    "npm:immutable@^4.3.0": "4.3.7"
   },
   "jsr": {
     "@std/assert@1.0.16": {
@@ -23,6 +24,9 @@
         "pure-rand"
       ]
     },
+    "immutable@4.3.7": {
+      "integrity": "sha512-1hqclzwYwjRDFLjcFxOM5AYkkG0rpFPpr1RLPMEuGczoS7YA8gLhy8SWXYRAA/XwfEHpfo3cw5JGioS32fnMRw=="
+    },
     "pure-rand@6.1.0": {
       "integrity": "sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA=="
     }
@@ -30,7 +34,8 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1",
-      "npm:fast-check@3"
+      "npm:fast-check@3",
+      "npm:immutable@^4.3.0"
     ]
   }
 }

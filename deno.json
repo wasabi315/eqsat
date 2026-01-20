@@ -5,7 +5,8 @@
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
-    "fast-check": "npm:fast-check@3"
+    "fast-check": "npm:fast-check@3",
+    "immutable": "npm:immutable@^4.3.0"
   },
   "test": {
     "exclude": ["vendor/"]

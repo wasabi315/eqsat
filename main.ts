@@ -1,11 +1,20 @@
-// Initialize composites polyfill globally
-import "./composites.ts";
+import { EGraph } from "./egraph.ts";
+import { Pattern, printTerm, parsePattern, parseTerm } from "./language.ts";
 
-export function add(a: number, b: number): number {
-  return a + b;
+function main() {
+  const term = parseTerm("(/ (* a 2) 2)");
+  const rewrites: ReadonlyArray<[Pattern, Pattern]> = [
+    [parsePattern("(* ?x 2)"), parsePattern("(<< ?x 1)")],
+    [parsePattern("(/ (* ?x ?y) ?z)"), parsePattern("(* ?x (/ ?y ?z))")],
+    [parsePattern("(/ ?x ?x)"), parsePattern("1")],
+    [parsePattern("(* ?x 1)"), parsePattern("?x")],
+  ];
+
+  console.log(printTerm(term));
+  const result = EGraph.equality_saturation(term, rewrites);
+  console.log(printTerm(result));
 }
 
-// Learn more at https://docs.deno.com/runtime/manual/examples/module_metadata#concepts
 if (import.meta.main) {
-  console.log("Add 2 + 3 =", add(2, 3));
+  main();
 }

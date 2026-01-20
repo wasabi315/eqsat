@@ -1,4 +1,4 @@
-import { assert } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import * as fc from "fast-check";
 import { createKey, UnionFind } from "./union-find.ts";
 
@@ -37,6 +37,128 @@ class UFModel {
     return this.find(x) === this.find(y);
   }
 }
+
+Deno.test("UnionFind - size getter", () => {
+  const uf = new UnionFind(5);
+  assertEquals(uf.size, 5);
+});
+
+Deno.test("UnionFind - extend adds new element", () => {
+  const uf = new UnionFind(3);
+  assertEquals(uf.size, 3);
+
+  const key3 = uf.extend();
+  assertEquals(uf.size, 4);
+  assertEquals(key3, createKey(3));
+
+  const key4 = uf.extend();
+  assertEquals(uf.size, 5);
+  assertEquals(key4, createKey(4));
+
+  // New elements should be in their own sets
+  assert(!uf.connected(key3, key4));
+  assert(!uf.connected(key3, createKey(0)));
+});
+
+Deno.test("UnionFind - extend and union", () => {
+  const uf = new UnionFind(2);
+  const key2 = uf.extend();
+
+  // Union the new element with existing element
+  const result = uf.union(createKey(0), key2);
+  assert(result !== null);
+  assert(uf.connected(createKey(0), key2));
+  assert(!uf.connected(createKey(1), key2));
+});
+
+Deno.test("UnionFind - getDisjointSets returns all singleton sets", () => {
+  const uf = new UnionFind(5);
+  const sets = uf.getDisjointSets();
+
+  // Should have 5 equivalence classes (all separate)
+  assertEquals(sets.size, 5);
+
+  // Each set should contain only one element
+  for (let i = 0; i < 5; i++) {
+    const key = createKey(i);
+    const set = sets.get(key);
+    assert(set !== undefined);
+    assertEquals(set.length, 1);
+    assertEquals(set[0], key);
+  }
+});
+
+Deno.test("UnionFind - getDisjointSets after unions", () => {
+  const uf = new UnionFind(6);
+
+  // Create some unions: {0,1,2}, {3,4}, {5}
+  uf.union(createKey(0), createKey(1));
+  uf.union(createKey(1), createKey(2));
+  uf.union(createKey(3), createKey(4));
+
+  const sets = uf.getDisjointSets();
+
+  // Should have 3 equivalence classes
+  assertEquals(sets.size, 3);
+
+  // Find the class containing 0 (should contain 0, 1, 2)
+  const root0 = uf.find(createKey(0));
+  const class0 = sets.get(root0);
+  assert(class0 !== undefined);
+  assertEquals(class0.length, 3);
+  assert(class0.includes(createKey(0)));
+  assert(class0.includes(createKey(1)));
+  assert(class0.includes(createKey(2)));
+
+  // Find the class containing 3 (should contain 3, 4)
+  const root3 = uf.find(createKey(3));
+  const class3 = sets.get(root3);
+  assert(class3 !== undefined);
+  assertEquals(class3.length, 2);
+  assert(class3.includes(createKey(3)));
+  assert(class3.includes(createKey(4)));
+
+  // Find the class containing 5 (should contain only 5)
+  const root5 = uf.find(createKey(5));
+  const class5 = sets.get(root5);
+  assert(class5 !== undefined);
+  assertEquals(class5.length, 1);
+  assert(class5.includes(createKey(5)));
+});
+
+Deno.test("UnionFind - getDisjointSets returns correct roots", () => {
+  const uf = new UnionFind(4);
+  uf.union(createKey(0), createKey(1));
+  uf.union(createKey(2), createKey(3));
+
+  const sets = uf.getDisjointSets();
+
+  // All keys in the map should be roots
+  for (const root of sets.keys()) {
+    assertEquals(uf.find(root), root);
+  }
+});
+
+Deno.test("UnionFind - getDisjointSets with extended elements", () => {
+  const uf = new UnionFind(2);
+  const key2 = uf.extend();
+  const key3 = uf.extend();
+
+  uf.union(createKey(0), createKey(1));
+  uf.union(key2, key3);
+
+  const sets = uf.getDisjointSets();
+
+  // Should have 2 equivalence classes
+  assertEquals(sets.size, 2);
+
+  // Check class sizes
+  const root0 = uf.find(createKey(0));
+  const root2 = uf.find(key2);
+
+  assertEquals(sets.get(root0)?.length, 2);
+  assertEquals(sets.get(root2)?.length, 2);
+});
 
 Deno.test("UnionFind - initial state", () => {
   const uf = new UnionFind(5);
