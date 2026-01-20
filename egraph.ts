@@ -193,10 +193,7 @@ export class EGraph {
   }
 
   addTerm(term: Term): EClassId {
-    const childIds: Array<EClassId> = [];
-    for (const child of term.children) {
-      childIds.push(this.addTerm(child));
-    }
+    const childIds = term.children.map((child) => this.addTerm(child));
     const enode = createENode({ op: term.op, children: List(childIds) });
     return this.add(enode);
   }
@@ -206,10 +203,9 @@ export class EGraph {
       case "var":
         return subst.get(pattern.name)!;
       case "node": {
-        const childIds: Array<EClassId> = [];
-        for (const child of pattern.children) {
-          childIds.push(this.addPattern(subst, child));
-        }
+        const childIds = pattern.children.map((child) =>
+          this.addPattern(subst, child),
+        );
         const enode = createENode({ op: pattern.op, children: List(childIds) });
         return this.add(enode);
       }
@@ -277,19 +273,10 @@ export function equality_saturation(
   for (let i = 0; i < maxIteration; i++) {
     const currentClassCount = egraph.classCount;
     const currentNodeCount = egraph.nodeCount;
-    dumpEGraph(egraph);
     for (const [lhs, rhs] of rewrites) {
       for (const [subst, eclass] of egraph.ematch(lhs)) {
-        console.log();
-        console.log(
-          printPatternWithSubst(subst, lhs),
-          "⇝",
-          printPatternWithSubst(subst, rhs),
-        );
-        console.log();
         const eclass2 = egraph.addPattern(subst, rhs);
         egraph.merge(eclass, eclass2);
-        dumpEGraph(egraph);
       }
     }
     const newClassCount = egraph.classCount;
@@ -297,7 +284,6 @@ export function equality_saturation(
     const madeProgress =
       currentClassCount !== newClassCount || currentNodeCount !== newNodeCount;
     if (!madeProgress) {
-      console.log("Saturated after", i + 1, "iteration");
       break;
     }
   }
