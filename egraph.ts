@@ -158,6 +158,7 @@ export class EGraph {
       switch (pattern.tag) {
         case "var": {
           const entry = subst.get(pattern.name);
+          // Add substitution if it doesn't contradict with existing ones.
           if (typeof entry === "undefined" || entry === eid) {
             yield subst.set(pattern.name, eid);
           }
@@ -170,14 +171,14 @@ export class EGraph {
               continue;
             }
 
-            let newSubsts = [subst];
             const children = List(pattern.children).zip(enode.children);
-            for (const [childPattern, childEid] of children) {
-              newSubsts = newSubsts.flatMap((newSubst) => [
-                ...worker(egraph, childPattern, childEid, newSubst),
-              ]);
-            }
-            yield* newSubsts;
+            yield* children.reduce(
+              (subs, [childPattern, childEid]) =>
+                subs.flatMap((sub) =>
+                  worker(egraph, childPattern, childEid, sub),
+                ),
+              Iterator.from([subst]),
+            );
           }
           break;
         }
@@ -215,7 +216,9 @@ export class EGraph {
     }
   }
 
-  /** Extract the smallest one among the represented terms in the specified e-class. */
+  /**
+   * Extract the smallest one among the represented terms in the specified e-class.
+   */
   extract_smallest(eid: EClassId): [Term, number] {
     // e-graph may contain cycles. To prevent infinite recursion, we need to track visited e-class ids.
     const worker = (visited: Set<EClassId>, eid: EClassId): [Term, number] => {
