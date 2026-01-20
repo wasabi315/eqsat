@@ -29,35 +29,17 @@ export class EGraph {
   private classes: Map<EClassId, EClass> = Map();
   // canonical enode -> canonical class ID
   private hashcons: Map<ENode, EClassId> = Map();
+  private worklist: Array<EClassId> = [];
 
-  dump() {
-    const eclasses = this.getEClasses();
-    console.log(
-      `{ ${eclasses
-        .map(
-          ([eids, nodes]) =>
-            `{${eids.map((id) => `$${id}`).join(", ")}} → { ${nodes.map(
-              ({ op, children }) => {
-                if (children.length === 0) {
-                  return `${op}`;
-                }
-                return `${op}(${children.map((id) => `$${id}`).join(", ")})`;
-              },
-            )} }`,
-        )
-        .join(",\n  ")} }`,
-    );
-  }
-
-  getEClasses(): [EClassId[], { op: string; children: EClassId[] }[]][] {
-    const disjointSets = this.unionFind.getDisjointSets();
+  get eclasses(): [EClassId[], { op: string; children: EClassId[] }[]][] {
+    const disjointSets = this.unionFind.disjointSets;
     return [...this.classes].map(([eid, { nodes }]) => [
       disjointSets.get(eid)!,
       [...nodes].map(({ op, children }) => ({ op, children: [...children] })),
     ]);
   }
 
-  private canonicalize(enode: ENode): ENode {
+  canonicalize(enode: ENode): ENode {
     return createENode({
       op: enode.op,
       children: enode.children.map((eid) => this.unionFind.find(eid)),
@@ -92,7 +74,6 @@ export class EGraph {
     return eid;
   }
 
-  private worklist: Array<EClassId> = [];
   /**
    * Merge two EClasses.
    * This is no-op if the given EClasses are already the same.
@@ -166,30 +147,24 @@ export class EGraph {
   }
 
   *ematch(pattern: Pattern): Generator<[Substitution<EClassId>, EClassId]> {
-    const self = this;
-
     function* worker(
+      egraph: EGraph,
       pattern: Pattern,
       eid: EClassId,
       subst: Substitution<EClassId>,
     ): Generator<Substitution<EClassId>> {
-      eid = self.unionFind.find(eid);
+      eid = egraph.unionFind.find(eid);
 
       switch (pattern.tag) {
         case "var": {
           const entry = subst.get(pattern.name);
-          if (typeof entry === "undefined") {
+          if (typeof entry === "undefined" || entry === eid) {
             yield subst.set(pattern.name, eid);
-            break;
-          }
-          if (entry === eid) {
-            yield subst;
-            break;
           }
           break;
         }
         case "node": {
-          const eclass = self.classes.get(eid)!;
+          const eclass = egraph.classes.get(eid)!;
           for (const enode of eclass.nodes) {
             if (pattern.op !== enode.op) {
               continue;
@@ -199,7 +174,7 @@ export class EGraph {
             const children = List(pattern.children).zip(enode.children);
             for (const [childPattern, childEid] of children) {
               newSubsts = newSubsts.flatMap((newSubst) => [
-                ...worker(childPattern, childEid, newSubst),
+                ...worker(egraph, childPattern, childEid, newSubst),
               ]);
             }
             yield* newSubsts;
@@ -210,7 +185,7 @@ export class EGraph {
     }
 
     for (const eid of this.classes.keys()) {
-      for (const subst of worker(pattern, eid, Map())) {
+      for (const subst of worker(this, pattern, eid, Map())) {
         yield [subst, eid];
       }
     }
@@ -240,7 +215,9 @@ export class EGraph {
     }
   }
 
+  /** Extract the smallest one among the represented terms in the specified e-class. */
   extract_smallest(eid: EClassId): [Term, number] {
+    // e-graph may contain cycles. To prevent infinite recursion, we need to track visited e-class ids.
     const worker = (visited: Set<EClassId>, eid: EClassId): [Term, number] => {
       eid = this.unionFind.find(eid);
       if (visited.has(eid)) {
@@ -282,49 +259,66 @@ export class EGraph {
   get nodeCount(): number {
     return this.hashcons.size;
   }
+}
 
-  static equality_saturation(
-    term: Term,
-    rewrites: ReadonlyArray<[Pattern, Pattern]>,
-    options?: { maxIteration: number },
-  ): Term {
-    const egraph = new EGraph();
-    const eid = egraph.addTerm(term);
+export function equality_saturation(
+  term: Term,
+  rewrites: ReadonlyArray<[Pattern, Pattern]>,
+  options?: { maxIteration: number },
+): Term {
+  const egraph = new EGraph();
+  const eid = egraph.addTerm(term);
 
-    const maxIteration = options?.maxIteration ?? 16;
+  const maxIteration = options?.maxIteration ?? 16;
 
-    for (let i = 0; i < maxIteration; i++) {
-      const currentClassCount = egraph.classCount;
-      const currentNodeCount = egraph.nodeCount;
-      for (const rw of rewrites) {
-        console.log("----------------");
-        for (const [subst, eclass] of egraph.ematch(rw[0])) {
-          egraph.dump();
-          console.log();
-          console.log(
-            printPatternWithSubst(subst, rw[0]),
-            "⇝",
-            printPatternWithSubst(subst, rw[1]),
-          );
-          console.log();
-          const eclass2 = egraph.addPattern(subst, rw[1]);
-          egraph.merge(eclass, eclass2);
-          egraph.dump();
-        }
-      }
-      const newClassCount = egraph.classCount;
-      const newNodeCount = egraph.nodeCount;
-      const madeProgress =
-        currentClassCount !== newClassCount ||
-        currentNodeCount !== newNodeCount;
-      if (!madeProgress) {
-        console.log("Saturated after", i + 1, "iteration");
-        break;
+  for (let i = 0; i < maxIteration; i++) {
+    const currentClassCount = egraph.classCount;
+    const currentNodeCount = egraph.nodeCount;
+    dumpEGraph(egraph);
+    for (const [lhs, rhs] of rewrites) {
+      for (const [subst, eclass] of egraph.ematch(lhs)) {
+        console.log();
+        console.log(
+          printPatternWithSubst(subst, lhs),
+          "⇝",
+          printPatternWithSubst(subst, rhs),
+        );
+        console.log();
+        const eclass2 = egraph.addPattern(subst, rhs);
+        egraph.merge(eclass, eclass2);
+        dumpEGraph(egraph);
       }
     }
-
-    return egraph.extract_smallest(eid)[0];
+    const newClassCount = egraph.classCount;
+    const newNodeCount = egraph.nodeCount;
+    const madeProgress =
+      currentClassCount !== newClassCount || currentNodeCount !== newNodeCount;
+    if (!madeProgress) {
+      console.log("Saturated after", i + 1, "iteration");
+      break;
+    }
   }
+
+  return egraph.extract_smallest(eid)[0];
+}
+
+function dumpEGraph(egraph: EGraph) {
+  const eclasses = egraph.eclasses;
+  console.log(
+    `{ ${eclasses
+      .map(
+        ([eids, nodes]) =>
+          `{${eids.map((id) => `$${id}`).join(", ")}} → { ${nodes
+            .map(({ op, children }) => {
+              if (children.length === 0) {
+                return `${op}`;
+              }
+              return `(${op} ${children.map((id) => `$${id}`).join(" ")})`;
+            })
+            .join(", ")} }`,
+      )
+      .join(",\n  ")} }`,
+  );
 }
 
 function printPatternWithSubst(
@@ -343,16 +337,7 @@ function printPatternWithSubst(
       if (pattern.children.length === 0) {
         return pattern.op;
       }
-      const childrenStr = pattern.children
-        .map((child) => printPatternWithSubst(subst, child))
-        .join(", ");
-      return `${pattern.op}(${childrenStr})`;
+      return `(${pattern.op} ${pattern.children.map((child) => printPatternWithSubst(subst, child)).join(" ")})`;
     }
   }
-}
-
-function printSubst(subst: Substitution<EClassId>) {
-  console.log(
-    `{ ${[...subst].map((sub) => `${sub[0]} → $${sub[1]}`).join(", ")} }`,
-  );
 }

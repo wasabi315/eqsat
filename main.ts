@@ -1,4 +1,4 @@
-import { EGraph } from "./egraph.ts";
+import { equality_saturation } from "./egraph.ts";
 import { Pattern, printTerm, parsePattern, parseTerm } from "./language.ts";
 
 function main() {
@@ -11,7 +11,7 @@ function main() {
   ];
 
   console.log(printTerm(term));
-  const result = EGraph.equality_saturation(term, rewrites);
+  const result = equality_saturation(term, rewrites);
   console.log(printTerm(result));
 }
 

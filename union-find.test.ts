@@ -73,7 +73,7 @@ Deno.test("UnionFind - extend and union", () => {
 
 Deno.test("UnionFind - getDisjointSets returns all singleton sets", () => {
   const uf = new UnionFind(5);
-  const sets = uf.getDisjointSets();
+  const sets = uf.disjointSets;
 
   // Should have 5 equivalence classes (all separate)
   assertEquals(sets.size, 5);
@@ -96,7 +96,7 @@ Deno.test("UnionFind - getDisjointSets after unions", () => {
   uf.union(createKey(1), createKey(2));
   uf.union(createKey(3), createKey(4));
 
-  const sets = uf.getDisjointSets();
+  const sets = uf.disjointSets;
 
   // Should have 3 equivalence classes
   assertEquals(sets.size, 3);
@@ -131,7 +131,7 @@ Deno.test("UnionFind - getDisjointSets returns correct roots", () => {
   uf.union(createKey(0), createKey(1));
   uf.union(createKey(2), createKey(3));
 
-  const sets = uf.getDisjointSets();
+  const sets = uf.disjointSets;
 
   // All keys in the map should be roots
   for (const root of sets.keys()) {
@@ -147,7 +147,7 @@ Deno.test("UnionFind - getDisjointSets with extended elements", () => {
   uf.union(createKey(0), createKey(1));
   uf.union(key2, key3);
 
-  const sets = uf.getDisjointSets();
+  const sets = uf.disjointSets;
 
   // Should have 2 equivalence classes
   assertEquals(sets.size, 2);
@@ -216,7 +216,8 @@ Deno.test("UnionFind - property: symmetry", () => {
         const uf = new UnionFind(size);
         uf.union(createKey(x), createKey(y));
         return (
-          uf.connected(createKey(x), createKey(y)) === uf.connected(createKey(y), createKey(x))
+          uf.connected(createKey(x), createKey(y)) ===
+          uf.connected(createKey(y), createKey(x))
         );
       },
     ),

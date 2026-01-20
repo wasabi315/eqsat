@@ -4,7 +4,7 @@
 export type Key = number & { readonly __brand: "Key" };
 
 /**
- * Coerce a number to a Key. This is the only place where type assertion is allowed.
+ * Coerce a number to a Key.
  */
 export function createKey(key: number): Key {
   return key as Key;
@@ -110,11 +110,11 @@ export class UnionFind {
    * const uf = new UnionFind(5);
    * uf.union(createKey(0), createKey(2));
    * uf.union(createKey(1), createKey(3));
-   * const sets = uf.getDisjointSets();
+   * const sets = uf.disjointSets;
    * // Map { 0 => [0, 2], 1 => [1, 3], 4 => [4] }
    * ```
    */
-  getDisjointSets(): Map<Key, Key[]> {
+  get disjointSets(): Map<Key, Key[]> {
     const classes = new Map<Key, Key[]>();
 
     for (let i = 0; i < this.size; i++) {
