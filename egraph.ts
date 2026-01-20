@@ -31,25 +31,30 @@ export class EGraph {
   private hashcons: Map<ENode, EClassId> = Map();
 
   dump() {
-    const disjointSets = this.unionFind.getDisjointSets();
+    const eclasses = this.getEClasses();
     console.log(
-      `{ ${[...this.classes]
+      `{ ${eclasses
         .map(
-          ([eid, { nodes }]) =>
-            `{${disjointSets
-              .get(eid)!
-              .map((id) => `$${id}`)
-              .join(", ")}} → { ${[...nodes]
-              .map(({ op, children }) => {
-                if (children.size === 0) {
+          ([eids, nodes]) =>
+            `{${eids.map((id) => `$${id}`).join(", ")}} → { ${nodes.map(
+              ({ op, children }) => {
+                if (children.length === 0) {
                   return `${op}`;
                 }
                 return `${op}(${children.map((id) => `$${id}`).join(", ")})`;
-              })
-              .join(", ")} }`,
+              },
+            )} }`,
         )
         .join(",\n  ")} }`,
     );
+  }
+
+  getEClasses(): [EClassId[], { op: string; children: EClassId[] }[]][] {
+    const disjointSets = this.unionFind.getDisjointSets();
+    return [...this.classes].map(([eid, { nodes }]) => [
+      disjointSets.get(eid)!,
+      [...nodes].map(({ op, children }) => ({ op, children: [...children] })),
+    ]);
   }
 
   private canonicalize(enode: ENode): ENode {
@@ -292,20 +297,19 @@ export class EGraph {
       const currentClassCount = egraph.classCount;
       const currentNodeCount = egraph.nodeCount;
       for (const rw of rewrites) {
-        // console.log("----------------");
+        console.log("----------------");
         for (const [subst, eclass] of egraph.ematch(rw[0])) {
-          // egraph.dump();
-          // console.log();
-          // console.log(
-          //   printPatternWithSubst(subst, rw[0]),
-          //   "⇝",
-          //   printPatternWithSubst(subst, rw[1]),
-          // );
-          // console.log();
+          egraph.dump();
+          console.log();
+          console.log(
+            printPatternWithSubst(subst, rw[0]),
+            "⇝",
+            printPatternWithSubst(subst, rw[1]),
+          );
+          console.log();
           const eclass2 = egraph.addPattern(subst, rw[1]);
           egraph.merge(eclass, eclass2);
-          egraph.rebuild();
-          // egraph.dump();
+          egraph.dump();
         }
       }
       const newClassCount = egraph.classCount;
