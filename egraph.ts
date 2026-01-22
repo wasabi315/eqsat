@@ -8,7 +8,7 @@ export type EClassId = Key;
 export type EClass = {
   nodes: Set<ENode>;
   originalNode: ENode;
-  parents: Array<[ENode, EClassId]>;
+  parents: Map<ENode, EClassId>;
 };
 
 // Define ENode as an Immutable Record for structural equality
@@ -20,7 +20,7 @@ const createENode = Record({
 export type ENode = ReturnType<typeof createENode>;
 
 export function createSingletonEClass(enode: ENode): EClass {
-  return { nodes: Set([enode]), originalNode: enode, parents: [] };
+  return { nodes: Set([enode]), originalNode: enode, parents: Map() };
 }
 
 export class EGraph {
@@ -31,12 +31,24 @@ export class EGraph {
   private hashcons: Map<ENode, EClassId> = Map();
   private worklist: Array<EClassId> = [];
 
+  get classCount(): number {
+    return this.classes.size;
+  }
+
+  get nodeCount(): number {
+    return this.hashcons.size;
+  }
+
   get eclasses(): [EClassId[], { op: string; children: EClassId[] }[]][] {
     const disjointSets = this.unionFind.disjointSets;
     return [...this.classes].map(([eid, { nodes }]) => [
       disjointSets.get(eid)!,
       [...nodes].map(({ op, children }) => ({ op, children: [...children] })),
     ]);
+  }
+
+  get enodes(): [ENode, EClassId][] {
+    return [...this.hashcons];
   }
 
   canonicalize(enode: ENode): ENode {
@@ -69,7 +81,7 @@ export class EGraph {
     // We also need to update parents of the children.
     for (const child_id of enode.children) {
       const child = this.classes.get(child_id)!;
-      child.parents.push([enode, eid]);
+      child.parents = child.parents.set(enode, eid);
     }
     return eid;
   }
@@ -99,7 +111,7 @@ export class EGraph {
 
     // Merge nodes and parents.
     newRoot.nodes = newRoot.nodes.union(oldRoot.nodes);
-    newRoot.parents.push(...oldRoot.parents);
+    newRoot.parents = newRoot.parents.concat(oldRoot.parents);
 
     this.worklist.push(newRootId);
     this.rebuild();
@@ -143,7 +155,7 @@ export class EGraph {
 
       dedupParents = dedupParents.set(newParentNode, newParentEClass);
     }
-    eclass.parents = dedupParents.toArray();
+    eclass.parents = dedupParents;
   }
 
   *ematch(pattern: Pattern): Generator<[Substitution<EClassId>, EClassId]> {
@@ -215,7 +227,7 @@ export class EGraph {
   /**
    * Extract the smallest one among the represented terms in the specified e-class.
    */
-  extract_smallest(eid: EClassId): [Term, number] {
+  extractSmallest(eid: EClassId): [Term, number] {
     // e-graph may contain cycles. To prevent infinite recursion, we need to track visited e-class ids.
     const worker = (visited: Set<EClassId>, eid: EClassId): [Term, number] => {
       eid = this.unionFind.find(eid);
@@ -250,14 +262,6 @@ export class EGraph {
     };
     return worker(Set(), eid);
   }
-
-  get classCount(): number {
-    return this.classes.size;
-  }
-
-  get nodeCount(): number {
-    return this.hashcons.size;
-  }
 }
 
 export function equality_saturation(
@@ -268,15 +272,23 @@ export function equality_saturation(
   const egraph = new EGraph();
   const eid = egraph.addTerm(term);
 
-  const maxIteration = options?.maxIteration ?? 16;
+  dumpEGraph(egraph);
 
+  const maxIteration = options?.maxIteration ?? 16;
   for (let i = 0; i < maxIteration; i++) {
     const currentClassCount = egraph.classCount;
     const currentNodeCount = egraph.nodeCount;
     for (const [lhs, rhs] of rewrites) {
       for (const [subst, eclass] of egraph.ematch(lhs)) {
+        console.log("----------------");
+        console.log(
+          "rewrite",
+          printPatternWithSubst(subst, lhs),
+          printPatternWithSubst(subst, rhs),
+        );
         const eclass2 = egraph.addPattern(subst, rhs);
         egraph.merge(eclass, eclass2);
+        dumpEGraph(egraph);
       }
     }
     const newClassCount = egraph.classCount;
@@ -288,26 +300,31 @@ export function equality_saturation(
     }
   }
 
-  return egraph.extract_smallest(eid)[0];
+  return egraph.extractSmallest(eid)[0];
+}
+
+function formatENode({ op, children }: { op: string; children: EClassId[] }): string {
+  return children.length === 0 ? op : `(${op} ${children.map((id) => `$${id}`).join(" ")})`;
+}
+
+function formatAligned(entries: [string, string][]): string {
+  const maxKeyLen = Math.max(...entries.map(([key]) => key.length));
+  return entries.map(([key, value]) => `  ${key.padEnd(maxKeyLen)} → ${value}`).join("\n");
 }
 
 function dumpEGraph(egraph: EGraph) {
-  const eclasses = egraph.eclasses;
-  console.log(
-    `{ ${eclasses
-      .map(
-        ([eids, nodes]) =>
-          `{${eids.map((id) => `$${id}`).join(", ")}} → { ${nodes
-            .map(({ op, children }) => {
-              if (children.length === 0) {
-                return `${op}`;
-              }
-              return `(${op} ${children.map((id) => `$${id}`).join(" ")})`;
-            })
-            .join(", ")} }`,
-      )
-      .join(",\n  ")} }`,
-  );
+  const eclassEntries = egraph.eclasses.map(([eids, nodes]): [string, string] => [
+    `{${eids.map((id) => `$${id}`).join(", ")}}`,
+    `{ ${nodes.map(formatENode).join(", ")} }`,
+  ]);
+
+  const enodeEntries = egraph.enodes.map(([{ op, children }, eid]): [string, string] => [
+    formatENode({ op, children: [...children] }),
+    `$${eid}`,
+  ]);
+
+  console.log(`e-classes:\n${formatAligned(eclassEntries)}`);
+  console.log(`e-nodes:\n${formatAligned(enodeEntries)}`);
 }
 
 function printPatternWithSubst(

@@ -122,9 +122,11 @@ export class UnionFind {
       const root = this.find(key);
 
       if (!classes.has(root)) {
-        classes.set(root, []);
+        classes.set(root, [root]);
       }
-      classes.get(root)!.push(key);
+      if (key !== root) {
+        classes.get(root)!.push(key);
+      }
     }
 
     return classes;
