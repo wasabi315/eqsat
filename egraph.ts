@@ -113,49 +113,26 @@ export class EGraph {
     newRoot.nodes = newRoot.nodes.union(oldRoot.nodes);
     newRoot.parents = newRoot.parents.concat(oldRoot.parents);
 
-    this.worklist.push(newRootId);
-    this.rebuild();
-
-    return true;
-  }
-
-  rebuild() {
-    while (this.worklist.length > 0) {
-      const todo = Set(this.worklist.map((id) => this.unionFind.find(id)));
-      this.worklist = [];
-
-      for (const id of todo) {
-        this.repair(id);
-      }
-    }
-  }
-
-  repair(eid: EClassId) {
-    const eclass = this.classes.get(eid)!;
-
-    // Update the hashcons so it always points canonical enodes to canonical eclasses
-    for (const [parentENode, parentEClassId] of eclass.parents) {
+    let dedupParents: Map<ENode, EClassId> = Map();
+    for (const [parentENode, parentEClassId] of newRoot.parents) {
+      // Update the hashcons so it always points canonical enodes to canonical eclasses
       const newParentNode = this.canonicalize(parentENode);
-      const newParentEClassId = this.unionFind.find(parentEClassId);
+      const newParentEid = this.unionFind.find(parentEClassId);
       this.hashcons = this.hashcons
         .delete(parentENode)
-        .set(newParentNode, newParentEClassId);
-    }
+        .set(newParentNode, newParentEid);
 
-    // Deduplicate parents, noting that equal parents get merged and put on the worklist
-    let dedupParents: Map<ENode, EClassId> = Map();
-    for (const [parentENode, parentEClassId] of eclass.parents) {
-      const newParentNode = this.canonicalize(parentENode);
-      const newParentEClass = this.unionFind.find(parentEClassId);
-
-      const newParentEClassId2 = dedupParents.get(newParentNode);
-      if (newParentEClassId2) {
-        this.merge(parentEClassId, newParentEClassId2);
+      // Deduplicate parents and propagate merge
+      const newParentEid2 = dedupParents.get(newParentNode);
+      if (newParentEid2) {
+        this.merge(parentEClassId, newParentEid2);
       }
 
-      dedupParents = dedupParents.set(newParentNode, newParentEClass);
+      dedupParents = dedupParents.set(newParentNode, newParentEid);
     }
-    eclass.parents = dedupParents;
+    newRoot.parents = dedupParents;
+
+    return true;
   }
 
   /**
