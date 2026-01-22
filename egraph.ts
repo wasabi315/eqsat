@@ -113,8 +113,15 @@ export class EGraph {
     newRoot.nodes = newRoot.nodes.union(oldRoot.nodes);
     newRoot.parents = newRoot.parents.concat(oldRoot.parents);
 
+    // Repair invariants
+    this.repair(newRoot);
+
+    return true;
+  }
+
+  repair(eclass: EClass) {
     let dedupParents: Map<ENode, EClassId> = Map();
-    for (const [parentENode, parentEClassId] of newRoot.parents) {
+    for (const [parentENode, parentEClassId] of eclass.parents) {
       // Update the hashcons so it always points canonical enodes to canonical eclasses
       const newParentNode = this.canonicalize(parentENode);
       const newParentEid = this.unionFind.find(parentEClassId);
@@ -130,9 +137,7 @@ export class EGraph {
 
       dedupParents = dedupParents.set(newParentNode, newParentEid);
     }
-    newRoot.parents = dedupParents;
-
-    return true;
+    eclass.parents = dedupParents;
   }
 
   /**
