@@ -158,6 +158,10 @@ export class EGraph {
     eclass.parents = dedupParents;
   }
 
+  /**
+   * Find e-classes that some of their nodes match the given pattern.
+   * Also returns substitution for pattern variables.
+   */
   *ematch(pattern: Pattern): Generator<[Substitution<EClassId>, EClassId]> {
     function* worker(
       egraph: EGraph,
@@ -184,13 +188,15 @@ export class EGraph {
             }
 
             const children = List(pattern.children).zip(enode.children);
-            yield* children.reduce(
-              (subs, [childPattern, childEid]) =>
-                subs.flatMap((sub) =>
-                  worker(egraph, childPattern, childEid, sub),
-                ),
-              Iterator.from([subst]),
-            );
+            // substs: iterator of possible substitutions
+            let substs = Iterator.from([subst]);
+            for (const [childPattern, childEid] of children) {
+              // for each sub we get multiple possible substs (consistent with sub) so using flatMap here
+              substs = substs.flatMap((sub) =>
+                worker(egraph, childPattern, childEid, sub),
+              );
+            }
+            yield* substs;
           }
           break;
         }
@@ -204,12 +210,19 @@ export class EGraph {
     }
   }
 
+  /**
+   * Add a term to this e-graph by add-ing each layer in a bottom-up manner.
+   */
   addTerm(term: Term): EClassId {
     const childIds = term.children.map((child) => this.addTerm(child));
     const enode = createENode({ op: term.op, children: List(childIds) });
     return this.add(enode);
   }
 
+  /**
+   * Add a pattern to this e-graph in a similar way to addTerm.
+   * Pattern variables are substituted according to subst.
+   */
   addPattern(subst: Substitution<EClassId>, pattern: Pattern): EClassId {
     switch (pattern.tag) {
       case "var":
@@ -229,9 +242,14 @@ export class EGraph {
    */
   extractSmallest(eid: EClassId): [Term, number] {
     // e-graph may contain cycles. To prevent infinite recursion, we need to track visited e-class ids.
-    const worker = (visited: Set<EClassId>, eid: EClassId): [Term, number] => {
+    // We also track the upper bound of the size of term for pruning
+    const worker = (
+      visited: Set<EClassId>,
+      upperBound: number,
+      eid: EClassId,
+    ): [Term, number] => {
       eid = this.unionFind.find(eid);
-      if (visited.has(eid)) {
+      if (visited.has(eid) || upperBound < 0) {
         throw new Error();
       }
       const newVisited = visited.add(eid);
@@ -239,20 +257,19 @@ export class EGraph {
       const eclass = this.classes.get(eid)!;
 
       let minTerm!: Term;
-      let minSize = Number.MAX_VALUE;
+      let minSize = upperBound;
 
       for (const enode of eclass.nodes) {
         try {
-          const children = enode.children.map((child) =>
-            worker(newVisited, child),
-          );
-          const childTerm = children.map(([term]) => term);
-          const childSize = children.reduce((acc, [_, size]) => acc + size, 0);
-          const size = 1 + childSize;
-          if (size < minSize) {
-            minSize = size;
-            minTerm = { op: enode.op, children: childTerm.toArray() };
+          const accChildren: Term[] = [];
+          let accSize = 1;
+          for (const child of enode.children) {
+            const [term, size] = worker(newVisited, minSize - accSize, child);
+            accSize += size;
+            accChildren.push(term);
           }
+          minSize = accSize;
+          minTerm = { op: enode.op, children: accChildren };
         } catch {
           continue;
         }
@@ -260,7 +277,8 @@ export class EGraph {
 
       return [minTerm, minSize];
     };
-    return worker(Set(), eid);
+
+    return worker(Set(), Number.MAX_VALUE, eid);
   }
 }
 
@@ -303,25 +321,39 @@ export function equality_saturation(
   return egraph.extractSmallest(eid)[0];
 }
 
-function formatENode({ op, children }: { op: string; children: EClassId[] }): string {
-  return children.length === 0 ? op : `(${op} ${children.map((id) => `$${id}`).join(" ")})`;
+function formatENode({
+  op,
+  children,
+}: {
+  op: string;
+  children: EClassId[];
+}): string {
+  return children.length === 0
+    ? op
+    : `(${op} ${children.map((id) => `$${id}`).join(" ")})`;
 }
 
 function formatAligned(entries: [string, string][]): string {
   const maxKeyLen = Math.max(...entries.map(([key]) => key.length));
-  return entries.map(([key, value]) => `  ${key.padEnd(maxKeyLen)} → ${value}`).join("\n");
+  return entries
+    .map(([key, value]) => `  ${key.padEnd(maxKeyLen)} → ${value}`)
+    .join("\n");
 }
 
 function dumpEGraph(egraph: EGraph) {
-  const eclassEntries = egraph.eclasses.map(([eids, nodes]): [string, string] => [
-    `{${eids.map((id) => `$${id}`).join(", ")}}`,
-    `{ ${nodes.map(formatENode).join(", ")} }`,
-  ]);
+  const eclassEntries = egraph.eclasses.map(
+    ([eids, nodes]): [string, string] => [
+      `{${eids.map((id) => `$${id}`).join(", ")}}`,
+      `{ ${nodes.map(formatENode).join(", ")} }`,
+    ],
+  );
 
-  const enodeEntries = egraph.enodes.map(([{ op, children }, eid]): [string, string] => [
-    formatENode({ op, children: [...children] }),
-    `$${eid}`,
-  ]);
+  const enodeEntries = egraph.enodes.map(
+    ([{ op, children }, eid]): [string, string] => [
+      formatENode({ op, children: [...children] }),
+      `$${eid}`,
+    ],
+  );
 
   console.log(`e-classes:\n${formatAligned(eclassEntries)}`);
   console.log(`e-nodes:\n${formatAligned(enodeEntries)}`);
